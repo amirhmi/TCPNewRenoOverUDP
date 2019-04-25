@@ -34,7 +34,7 @@ public class Util {
             retSize --;
         for (int i = 0; i <= retSize; i++)
             ret.add(
-                    new TCPSegment(false, false, i, 0,
+                    new TCPSegment(false, false, false, i, 0,
                     Arrays.copyOfRange(fileBytes, i * Config.payloadLength, (i + 1) * Config.payloadLength)));
         System.out.println(ret.size());
         return ret;
