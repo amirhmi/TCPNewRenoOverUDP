@@ -1,13 +1,13 @@
 import java.awt.desktop.SystemSleepEvent;
-import java.net.DatagramPacket;
-import java.net.InetAddress;
-import java.net.SocketAddress;
-import java.net.SocketTimeoutException;
+import java.net.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 public class TCPSocketImpl extends TCPSocket {
+    private long cwnd;
+    private long ssthresh;
     public TCPSocketImpl(String ip, int port) throws Exception {
         super(ip, port);
     }
@@ -17,8 +17,12 @@ public class TCPSocketImpl extends TCPSocket {
         establishSenderConnection();
         List<TCPSegment> segments = Util.breakToSegment(pathToFile);
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
-        DatagramPacket dp = new DatagramPacket(pathToFile.getBytes(), pathToFile.length(), InetAddress.getByName(Config.receiverIP), Config.receiverPort);
-        //eds.send(dp);
+        TCPSegment segment = new TCPSegment(false, false, false, 1, 0, "salam\n".getBytes());
+        DatagramPacket dp = new DatagramPacket(segment.toBytes(), segment.toBytes().length, InetAddress.getByName(Config.receiverIP), Config.receiverPort);
+        eds.send(dp);
+        segment = new TCPSegment(false, false, false, 0, 0, "aleyk\n".getBytes());
+        dp = new DatagramPacket(segment.toBytes(), segment.toBytes().length, InetAddress.getByName(Config.receiverIP), Config.receiverPort);
+        eds.send(dp);
         eds.close();
     }
 
@@ -27,17 +31,31 @@ public class TCPSocketImpl extends TCPSocket {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
         byte[] segmentBytes = new byte[1024];
         DatagramPacket dp = new DatagramPacket(segmentBytes, 1024);
+        List<TCPSegment> window = new ArrayList<>();
+        int lastReceived = -1;
+        Util.addToFile(pathToFile, new byte[0], false);
         TCPSegment segment;
         while(true) {
             eds.receive(dp);
             if (dp.getLength() > 0) {
-                System.out.println(new String(dp.getData(), 0, dp.getLength()));
-                segment = new TCPSegment(dp.getData());
+                //System.out.println(new String(dp.getData(), 0, dp.getLength()));
+                segment = new TCPSegment(new String(dp.getData(), 0, dp.getLength()).getBytes());
                 if(segment.fin && !segment.ack && !segment.syn)
                     break;
                 else if (!segment.fin && !segment.ack && !segment.syn)
                 {
-                    //TODO buffering received packets
+                    int pos = 0;
+                    for (TCPSegment w : window)
+                        if (w.seqNumber < segment.seqNumber)
+                            pos++;
+                        else
+                            break;
+                    window.add(pos, segment);
+                    while (window.size() > 0 && window.get(0).seqNumber == lastReceived + 1)
+                    {
+                        lastReceived++;
+                        Util.addToFile(pathToFile, window.remove(0).payload, true);
+                    }
                 }
             }
         }
@@ -75,12 +93,12 @@ public class TCPSocketImpl extends TCPSocket {
 
     @Override
     public long getSSThreshold() {
-        throw new RuntimeException("Not implemented!");
+        return ssthresh;
     }
 
     @Override
     public long getWindowSize() {
-        throw new RuntimeException("Not implemented!");
+        return cwnd;
     }
 
     private void establishSenderConnection() throws Exception{

@@ -1,3 +1,6 @@
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -38,5 +41,15 @@ public class Util {
                     Arrays.copyOfRange(fileBytes, i * Config.payloadLength, (i + 1) * Config.payloadLength)));
         System.out.println(ret.size());
         return ret;
+    }
+
+    public static void addToFile(String path, byte[] data, boolean isAppend) throws IOException
+    {
+        BufferedWriter writer = new BufferedWriter(new FileWriter(path, isAppend));
+        if (isAppend)
+            writer.append(new String(data, "utf-8"));
+        else
+            writer.write(new String(data, "utf-8"));
+        writer.close();
     }
 }
