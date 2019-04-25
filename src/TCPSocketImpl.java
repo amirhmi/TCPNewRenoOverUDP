@@ -1,6 +1,7 @@
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.SocketAddress;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -12,6 +13,7 @@ public class TCPSocketImpl extends TCPSocket {
     @Override
     public void send(String pathToFile) throws Exception {
         establishClientConnection();
+        List<TCPSegment> segments = Util.breakToSegment(pathToFile);
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
         DatagramPacket dp = new DatagramPacket(pathToFile.getBytes(), pathToFile.length(), InetAddress.getByName(Config.serverIP), Config.serverPort);
         eds.send(dp);

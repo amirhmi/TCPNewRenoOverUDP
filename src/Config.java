@@ -4,4 +4,5 @@ public class Config {
     public static String serverIP = "127.0.0.1";
     public static String clientIP = "127.0.0.1";
     public static String localhost = "127.0.0.1";
+    public static int payloadLength = 128;
 }
