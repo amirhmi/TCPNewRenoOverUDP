@@ -42,6 +42,7 @@ public class TCPSocketImpl extends TCPSocket {
                 TCPSegment segment = new TCPSegment(dp);
                 if (segment.ack && !segment.syn && !segment.fin)
                 {
+                    int rwnd = Util.bytesToInt(segment.payload, 0);
                     if (segment.ackNumber < window.get(0).seqNumber) {
                         if (segment.ackNumber == last_dup)
                             dup++;
@@ -92,7 +93,7 @@ public class TCPSocketImpl extends TCPSocket {
                         }
                         onWindowChange();
                     }
-
+                    cwnd = Math.min(cwnd, rwnd * Config.MSS);
                 }
             }
             catch (SocketTimeoutException e)
@@ -162,7 +163,7 @@ public class TCPSocketImpl extends TCPSocket {
                         Util.addToFile(pathToFile, window.remove(0).payload, true);
                     }
                     System.out.println(lastReceived);
-                    sendAck(eds, lastReceived);
+                    sendAck(eds, lastReceived, Config.receiverBufferSize - window.size());
                 }
             }
         }
@@ -177,9 +178,9 @@ public class TCPSocketImpl extends TCPSocket {
         eds.close();
     }
 
-    public void sendAck (EnhancedDatagramSocket eds, int ackNumber) throws Exception
+    public void sendAck (EnhancedDatagramSocket eds, int ackNumber, int rwnd) throws Exception
     {
-        TCPSegment segment = new TCPSegment(false, true, false, 0, ackNumber, new byte[0]);
+        TCPSegment segment = new TCPSegment(false, true, false, 0, ackNumber, Util.intToBytes(rwnd));
         byte[] segmentBytes = segment.toBytes();
         DatagramPacket dp = new DatagramPacket(segmentBytes, segmentBytes.length, InetAddress.getByName(Config.senderIP), Config.senderPort);
         eds.send(dp);
