@@ -14,7 +14,7 @@ public class TCPServerSocketImpl extends TCPServerSocket {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(Config.receiverPort);
         TCPSegment segment;
         byte[] segmentBytes;
-        byte[] receivedBytes = new byte[1024];
+        byte[] receivedBytes = new byte[Config.maximumReceivedBytes];
         DatagramPacket dp = new DatagramPacket(receivedBytes, receivedBytes.length);
         eds.receive(dp);
         segment = new TCPSegment(dp);

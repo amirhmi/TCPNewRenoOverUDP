@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 public class TCPSocketImpl extends TCPSocket {
     private long cwnd;
     private long ssthresh;
+    private int dup;
     public TCPSocketImpl(String ip, int port) throws Exception {
         super(ip, port);
     }
@@ -29,12 +30,28 @@ public class TCPSocketImpl extends TCPSocket {
         {
             while (window.size() < cwnd && segments.size() > 0) {
                 sendSegment(segments.get(0), eds);
-                segments.remove(0);
-                //window.add(segments.remove(0));
+                window.add(segments.remove(0));
             }
-            byte[] buf = new byte[1024];
-            DatagramPacket dp = new DatagramPacket(buf, buf.length);
-            //eds.receive(dp);
+            try {
+                byte[] buf = new byte[Config.maximumReceivedBytes];
+                DatagramPacket dp = new DatagramPacket(buf, buf.length);
+                eds.receive(dp);
+                TCPSegment segment = new TCPSegment(dp);
+                if (segment.ack && !segment.syn && !segment.fin)
+                {
+                    if (segment.ackNumber < window.get(0).seqNumber)
+                        dup ++;
+                    else
+                        dup = 0;
+                    while (window.size() > 0 && segment.ackNumber >= window.get(0).seqNumber)
+                        window.remove(0);
+                }
+            }
+            catch (SocketTimeoutException e)
+            {
+                for (TCPSegment w : window)
+                    sendSegment(w, eds);
+            }
         }
 
         eds.close();
@@ -50,7 +67,7 @@ public class TCPSocketImpl extends TCPSocket {
     @Override
     public void receive(String pathToFile) throws Exception {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
-        byte[] receivedBytes = new byte[1024];
+        byte[] receivedBytes = new byte[Config.maximumReceivedBytes];
         DatagramPacket dp;
         List<TCPSegment> window = new ArrayList<>();
         int lastReceived = -1;
@@ -66,18 +83,22 @@ public class TCPSocketImpl extends TCPSocket {
                     break;
                 else if (!segment.fin && !segment.ack && !segment.syn)
                 {
-                    int pos = 0;
-                    for (TCPSegment w : window)
-                        if (w.seqNumber < segment.seqNumber)
-                            pos++;
-                        else
-                            break;
-                    window.add(pos, segment);
-                    while (window.size() > 0 && window.get(0).seqNumber == lastReceived + 1)
-                    {
+                    if (window.size() == 0 || segment.seqNumber > lastReceived) {
+                        int pos = 0;
+                        for (TCPSegment w : window)
+                            if (w.seqNumber < segment.seqNumber)
+                                pos++;
+                            else
+                                break;
+                        window.add(pos, segment);
+                    }
+                    while (window.size() > 0 && window.get(0).seqNumber <= lastReceived)
+                        window.remove(0);
+                    while (window.size() > 0 && window.get(0).seqNumber == lastReceived + 1) {
                         lastReceived++;
                         Util.addToFile(pathToFile, window.remove(0).payload, true);
                     }
+                    System.out.println(lastReceived);
                     sendAck(eds, lastReceived);
                 }
             }
@@ -106,7 +127,7 @@ public class TCPSocketImpl extends TCPSocket {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
         TCPSegment segment = new TCPSegment(false, false, true, 342, 0, new byte[0]);
         byte[] segmentBytes = segment.toBytes();
-        byte[] receivedBytes = new byte[1024];
+        byte[] receivedBytes = new byte[Config.maximumReceivedBytes];
         DatagramPacket dp;
         eds.setSoTimeout(Config.timeoutMS);
         while (true) {
@@ -141,7 +162,7 @@ public class TCPSocketImpl extends TCPSocket {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
         TCPSegment segment = new TCPSegment(true, false, false, 505, 0, new byte[0]);
         byte[] segmentBytes = segment.toBytes();
-        byte[] receivedBytes = new byte[1024];
+        byte[] receivedBytes = new byte[Config.maximumReceivedBytes];
         DatagramPacket dp;
         eds.setSoTimeout(Config.timeoutMS);
         while (true) {
