@@ -13,10 +13,11 @@ public class TCPServerSocketImpl extends TCPServerSocket {
         System.out.println("handshaking::listening");
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(Config.receiverPort);
         TCPSegment segment;
-        byte[] segmentBytes = new byte[1024];
-        DatagramPacket dp = new DatagramPacket(segmentBytes, 1024);
+        byte[] segmentBytes;
+        byte[] receivedBytes = new byte[1024];
+        DatagramPacket dp = new DatagramPacket(receivedBytes, receivedBytes.length);
         eds.receive(dp);
-        segment = new TCPSegment(dp.getData());
+        segment = new TCPSegment(dp);
         eds.setSoTimeout(Config.timeoutMS);
         if (segment.syn && !segment.ack)
         {
@@ -29,8 +30,9 @@ public class TCPServerSocketImpl extends TCPServerSocket {
                 //synAckSent
                 System.out.println("handshaking::syn ack sent");
                 try {
+                    dp = new DatagramPacket(receivedBytes, receivedBytes.length);
                     eds.receive(dp);
-                    segment = new TCPSegment(dp.getData());
+                    segment = new TCPSegment(dp);
                     if (!segment.syn && segment.ack && segment.ackNumber == 318) {
                         //established
                         System.out.println("handshaking::ack received");

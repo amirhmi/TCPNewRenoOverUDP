@@ -7,4 +7,6 @@ public class Config {
     public static int payloadLength = 128;
     public static int timeoutMS = 200;
     public static int sendRepeat = 25;
+    public static int defaultCWND = 32;
+    public static int defaultSSTHRESH = 64;
 }

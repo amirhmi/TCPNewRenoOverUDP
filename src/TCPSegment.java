@@ -1,4 +1,6 @@
+import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class TCPSegment {
     public boolean syn;
@@ -19,12 +21,13 @@ public class TCPSegment {
             ret[9+i] = payload[i];
         return ret;
     }
-    public TCPSegment(byte[] bytes)
+    public TCPSegment(DatagramPacket dp)
     {
-        int synackfin = (int)Util.bytesToChar(bytes, 0);
-        fin = (synackfin >= 4);
-        syn = (synackfin % 4) >= 2;
-        ack = (synackfin % 2) >= 1;
+        byte[] bytes = Arrays.copyOfRange(dp.getData(), 0, dp.getLength());//new String(dp.getData(), 0, dp.getLength()).getBytes();
+        int flags = (int)Util.bytesToChar(bytes, 0);
+        fin = (flags >= 4);
+        syn = (flags % 4) >= 2;
+        ack = (flags % 2) >= 1;
         seqNumber = Util.bytesToInt(bytes, 1);
         ackNumber = Util.bytesToInt(bytes, 5);
         payload = new byte[bytes.length - 9];

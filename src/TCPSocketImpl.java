@@ -1,6 +1,8 @@
 import java.awt.desktop.SystemSleepEvent;
 import java.net.*;
+import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
@@ -15,31 +17,51 @@ public class TCPSocketImpl extends TCPSocket {
     @Override
     public void send(String pathToFile) throws Exception {
         establishSenderConnection();
+
+        cwnd = Config.defaultCWND;
+        ssthresh = Config.defaultSSTHRESH;
         List<TCPSegment> segments = Util.breakToSegment(pathToFile);
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
-        TCPSegment segment = new TCPSegment(false, false, false, 1, 0, "salam\n".getBytes());
-        DatagramPacket dp = new DatagramPacket(segment.toBytes(), segment.toBytes().length, InetAddress.getByName(Config.receiverIP), Config.receiverPort);
-        eds.send(dp);
-        segment = new TCPSegment(false, false, false, 0, 0, "aleyk\n".getBytes());
-        dp = new DatagramPacket(segment.toBytes(), segment.toBytes().length, InetAddress.getByName(Config.receiverIP), Config.receiverPort);
-        eds.send(dp);
+        eds.setSoTimeout(Config.timeoutMS);
+        List<TCPSegment> window = new ArrayList<>();
+
+        while(segments.size() > 0 || window.size() > 0)
+        {
+            while (window.size() < cwnd && segments.size() > 0) {
+                sendSegment(segments.get(0), eds);
+                segments.remove(0);
+                //window.add(segments.remove(0));
+            }
+            byte[] buf = new byte[1024];
+            DatagramPacket dp = new DatagramPacket(buf, buf.length);
+            //eds.receive(dp);
+        }
+
         eds.close();
+    }
+
+    private void sendSegment(TCPSegment segment, EnhancedDatagramSocket eds) throws Exception
+    {
+        byte[] segmentBytes = segment.toBytes();
+        DatagramPacket dp = new DatagramPacket(segmentBytes, segmentBytes.length, InetAddress.getByName(Config.receiverIP), Config.receiverPort);
+        eds.send(dp);
     }
 
     @Override
     public void receive(String pathToFile) throws Exception {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
-        byte[] segmentBytes = new byte[1024];
-        DatagramPacket dp = new DatagramPacket(segmentBytes, 1024);
+        byte[] receivedBytes = new byte[1024];
+        DatagramPacket dp;
         List<TCPSegment> window = new ArrayList<>();
         int lastReceived = -1;
         Util.addToFile(pathToFile, new byte[0], false);
         TCPSegment segment;
         while(true) {
+            dp = new DatagramPacket(receivedBytes, receivedBytes.length);
             eds.receive(dp);
             if (dp.getLength() > 0) {
                 //System.out.println(new String(dp.getData(), 0, dp.getLength()));
-                segment = new TCPSegment(new String(dp.getData(), 0, dp.getLength()).getBytes());
+                segment = new TCPSegment(dp);
                 if(segment.fin && !segment.ack && !segment.syn)
                     break;
                 else if (!segment.fin && !segment.ack && !segment.syn)
@@ -56,10 +78,12 @@ public class TCPSocketImpl extends TCPSocket {
                         lastReceived++;
                         Util.addToFile(pathToFile, window.remove(0).payload, true);
                     }
+                    sendAck(eds, lastReceived);
                 }
             }
         }
         System.out.println("close::fin received");
+        byte[] segmentBytes;
         segment = new TCPSegment(false, true, true, 284, segment.seqNumber + 1, new byte[0]);
         segmentBytes = segment.toBytes();
         dp = new DatagramPacket(segmentBytes, segmentBytes.length, InetAddress.getByName(Config.senderIP), Config.senderPort);
@@ -69,11 +93,20 @@ public class TCPSocketImpl extends TCPSocket {
         eds.close();
     }
 
+    public void sendAck (EnhancedDatagramSocket eds, int ackNumber) throws Exception
+    {
+        TCPSegment segment = new TCPSegment(false, true, false, 0, ackNumber, new byte[0]);
+        byte[] segmentBytes = segment.toBytes();
+        DatagramPacket dp = new DatagramPacket(segmentBytes, segmentBytes.length, InetAddress.getByName(Config.senderIP), Config.senderPort);
+        eds.send(dp);
+    }
+
     @Override
     public void close() throws Exception {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
         TCPSegment segment = new TCPSegment(false, false, true, 342, 0, new byte[0]);
         byte[] segmentBytes = segment.toBytes();
+        byte[] receivedBytes = new byte[1024];
         DatagramPacket dp;
         eds.setSoTimeout(Config.timeoutMS);
         while (true) {
@@ -81,8 +114,9 @@ public class TCPSocketImpl extends TCPSocket {
             eds.send(dp);
             System.out.println("close::fin sent");
             try {
+                dp = new DatagramPacket(receivedBytes, receivedBytes.length);
                 eds.receive(dp);
-                segment = new TCPSegment(dp.getData());
+                segment = new TCPSegment(dp);
                 if (segment.fin && segment.ack && segment.ackNumber == 343)
                     break;
             } catch (SocketTimeoutException e) { System.out.println("close::receiving finack timeout");}
@@ -107,6 +141,7 @@ public class TCPSocketImpl extends TCPSocket {
         EnhancedDatagramSocket eds = new EnhancedDatagramSocket(port);
         TCPSegment segment = new TCPSegment(true, false, false, 505, 0, new byte[0]);
         byte[] segmentBytes = segment.toBytes();
+        byte[] receivedBytes = new byte[1024];
         DatagramPacket dp;
         eds.setSoTimeout(Config.timeoutMS);
         while (true) {
@@ -115,8 +150,9 @@ public class TCPSocketImpl extends TCPSocket {
             //synSent;
             System.out.println("handshaking::syn sent");
             try {
+                dp = new DatagramPacket(receivedBytes, receivedBytes.length);
                 eds.receive(dp);
-                segment = new TCPSegment(dp.getData());
+                segment = new TCPSegment(dp);
                 if (segment.ack && segment.syn && segment.ackNumber == 506) {
                     System.out.println("handshaking::synack received");
                     segment = new TCPSegment(false, true, false, 1222, segment.seqNumber + 1, new byte[0]);

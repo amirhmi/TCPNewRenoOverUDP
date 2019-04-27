@@ -38,8 +38,9 @@ public class Util {
         for (int i = 0; i <= retSize; i++)
             ret.add(
                     new TCPSegment(false, false, false, i, 0,
-                    Arrays.copyOfRange(fileBytes, i * Config.payloadLength, (i + 1) * Config.payloadLength)));
-        System.out.println(ret.size());
+                    Arrays.copyOfRange(fileBytes, i * Config.payloadLength,
+                            Math.min((i + 1) * Config.payloadLength, fileBytes.length))));
+        System.out.println("packet number:" + ret.size());
         return ret;
     }
 
