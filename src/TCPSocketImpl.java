@@ -9,8 +9,11 @@ import java.util.concurrent.TimeUnit;
 
 public class TCPSocketImpl extends TCPSocket {
     private long cwnd;
+    private long oldcwnd;
     private long ssthresh;
     private int dup;
+    private int last_dup = -1;
+    private CongestionControlState senderState = CongestionControlState.slowStart;
     public TCPSocketImpl(String ip, int port) throws Exception {
         super(ip, port);
     }
@@ -28,7 +31,7 @@ public class TCPSocketImpl extends TCPSocket {
 
         while(segments.size() > 0 || window.size() > 0)
         {
-            while (window.size() < cwnd && segments.size() > 0) {
+            while (window.size() < (int)((cwnd + Config.MSS - 1) / Config.MSS) && segments.size() > 0) {
                 sendSegment(segments.get(0), eds);
                 window.add(segments.remove(0));
             }
@@ -39,21 +42,81 @@ public class TCPSocketImpl extends TCPSocket {
                 TCPSegment segment = new TCPSegment(dp);
                 if (segment.ack && !segment.syn && !segment.fin)
                 {
-                    if (segment.ackNumber < window.get(0).seqNumber)
-                        dup ++;
+                    if (segment.ackNumber < window.get(0).seqNumber) {
+                        if (segment.ackNumber == last_dup)
+                            dup++;
+                        else
+                        {
+                            dup = 1;
+                            last_dup = segment.ackNumber;
+                        }
+                    }
                     else
                         dup = 0;
                     while (window.size() > 0 && segment.ackNumber >= window.get(0).seqNumber)
                         window.remove(0);
+                    if (senderState == CongestionControlState.slowStart) {
+                        cwnd += Config.MSS;
+                        onWindowChange();
+                        if (cwnd > ssthresh)
+                            senderState = CongestionControlState.congestionAvoidance;
+                    }
+                    else if (senderState == CongestionControlState.congestionAvoidance) {
+                        cwnd += (Config.MSS * Config.MSS) / cwnd;
+                        if (dup >= 3)
+                        {
+                            oldcwnd = cwnd / 2;
+                            ssthresh = oldcwnd;
+                            cwnd = ssthresh + 3;
+                            for (TCPSegment w : window)
+                                if (w.seqNumber == last_dup) {
+                                    sendSegment(w, eds);
+                                    break;
+                                }
+                            //TODO ask
+                        }
+                        onWindowChange();
+                    }
+                    else if (senderState == CongestionControlState.fastRecovery)
+                    {
+                        if (dup == 0) {
+                            cwnd = oldcwnd / 2;
+                            senderState = CongestionControlState.congestionAvoidance;
+                        } else {
+                            cwnd++;
+                            for (TCPSegment w : window)
+                                if (w.seqNumber == last_dup) {
+                                    sendSegment(w, eds);
+                                    break;
+                                }
+                        }
+                        onWindowChange();
+                    }
+
                 }
             }
             catch (SocketTimeoutException e)
             {
                 for (TCPSegment w : window)
                     sendSegment(w, eds);
+                if (senderState == CongestionControlState.slowStart);
+                else if (senderState == CongestionControlState.congestionAvoidance)
+                {
+                    cwnd = 1;
+                    ssthresh = cwnd/2;
+                    senderState = CongestionControlState.slowStart;
+                    onWindowChange();
+                }
+                else if (senderState == CongestionControlState.fastRecovery)
+                {
+                    cwnd = 1;
+                    ssthresh = oldcwnd/2;
+                    senderState = CongestionControlState.slowStart;
+                    onWindowChange();
+                }
             }
         }
-
+        saveCongestionWindowPlot();
         eds.close();
     }
 
@@ -192,7 +255,5 @@ public class TCPSocketImpl extends TCPSocket {
     }
 
 
-    private enum SenderState {}
-
-    private enum RecieverState {}
+    private enum CongestionControlState {slowStart, congestionAvoidance, fastRecovery}
 }

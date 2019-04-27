@@ -5,9 +5,11 @@ public class Config {
     public static String receiverIP = "127.0.0.1";
     public static String localhost = "127.0.0.1";
     public static int payloadLength = 128;
+    public static int MSS = payloadLength + 9;
     public static int timeoutMS = 20;
     public static int sendRepeat = 25;
-    public static int defaultCWND = 32;
-    public static int defaultSSTHRESH = 64;
+    public static long defaultCWND = 8 * MSS;
+    public static long defaultSSTHRESH = 16 * MSS;
+    public static int receiverBufferSize = 20;
     public static int maximumReceivedBytes = 1024;
 }
