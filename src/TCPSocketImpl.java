@@ -86,7 +86,7 @@ public class TCPSocketImpl extends TCPSocket {
                         } else {
                             cwnd++;
                             for (TCPSegment w : window)
-                                if (w.seqNumber == last_dup) {
+                                if (w.seqNumber == last_dup + 1) {
                                     sendSegment(w, eds);
                                     break;
                                 }
@@ -147,7 +147,8 @@ public class TCPSocketImpl extends TCPSocket {
                     break;
                 else if (!segment.fin && !segment.ack && !segment.syn)
                 {
-                    if (window.size() == 0 || segment.seqNumber > lastReceived) {
+                    if ((window.size() == 0 || segment.seqNumber > lastReceived) &&
+                        (window.size() < (Config.receiverBufferSize - 1) || segment.seqNumber == lastReceived + 1)) {
                         int pos = 0;
                         for (TCPSegment w : window)
                             if (w.seqNumber < segment.seqNumber)
